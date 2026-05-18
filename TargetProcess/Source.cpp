@@ -1,11 +1,11 @@
-
 #include <Windows.h>
-#include <winerror.h>
-
 #include <stdio.h>
 
 int main()
 {
+    DWORD pid = GetCurrentProcessId();
+    printf("PID: %lu\n", pid);
+    
     int i = 0;
     while (true)
     {
