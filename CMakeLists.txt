@@ -12,4 +12,4 @@ add_executable(DLLLoader DLLLoader/Source.cpp)
 
 add_executable(DLLInjectorAsProcess DLLInjectorAsProcess/Source.cpp)
 
-add_library(DllInjectorAsDll SHARED DllInjectorAsDll/Source.cpp)
+add_library(DllInjectorAsDll SHARED DllInjectorAsDll/Source.cpp DllInjectorAsDll/DllInjectorAsDll.def)
