@@ -28,9 +28,9 @@
                                          → Attack() показывает MessageBox
 ```
 
-После четвёртого шага DLL уже живёт внутри чужого процесса и выполняется в его контексте — с его правами, его памятью и доступом к его данным.
+После четвёртого шага DLL живёт внутри чужого процесса и выполняется в его контексте — с его правами, памятью и доступом к его данным.
 
-Единственное ограничение по правам: `OpenProcess` потребует флаги `PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION`, то есть инжектор должен быть запущен от того же пользователя, что и жертва, либо от администратора.
+`OpenProcess` требует флаги `PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION`, то есть инжектор должен быть запущен от того же пользователя, что и жертва, либо от администратора.
 
 ---
 
@@ -46,7 +46,8 @@
 │   └── Source.cpp
 │
 ├── DllInjectorAsDll/          — инжектор в виде .dll (запускается через Rundll32)
-│   └── Source.cpp
+│   ├── Source.cpp
+│   └── DllInjectorAsDll.def
 │
 ├── TargetProcess/             — процесс-жертва, бесконечно считает секунды
 │   └── Source.cpp
@@ -63,15 +64,15 @@
 
 ### VirusDLL
 
-Это то, что мы внедряем. Как только DLL загружается в чужой процесс, срабатывает `DllMain` с событием `DLL_PROCESS_ATTACH`, который вызывает `Attack()`. Та, в свою очередь, спрашивает у Windows имя текущего процесса через `GetModuleBaseNameA` и показывает `MessageBox` с этим именем в заголовке. Это и есть наглядное доказательство, что DLL оказалась там, где нужно.
+Это то, что мы внедряем. Как только DLL загружается в чужой процесс, срабатывает `DllMain` с событием `DLL_PROCESS_ATTACH`, который вызывает `Attack()`. Та спрашивает у Windows имя текущего процесса через `GetModuleBaseNameA` и показывает `MessageBox` с этим именем в заголовке — наглядное доказательство, что DLL оказалась там, где нужно.
 
 ### TargetProcess
 
-Самый простой модуль — бесконечный цикл, который раз в секунду печатает счётчик. Никакой полезной логики, только что-то живое, в чём можно наблюдать эффект инъекции. Именно его PID мы передаём инжектору.
+Бесконечный цикл, который раз в секунду печатает счётчик. Никакой полезной логики, только что-то живое, в чём можно наблюдать эффект инъекции. Именно его PID передаётся инжектору.
 
 ### DLLInjectorAsProcess
 
-Консольная программа, которая принимает PID жертвы первым аргументом и выполняет все четыре шага инъекции. Самый прямолинейный вариант.
+Консольная программа, которая принимает PID жертвы первым аргументом и выполняет все четыре шага инъекции.
 
 ```
 DLLInjectorAsProcess.exe <PID>
@@ -81,7 +82,7 @@ DLLInjectorAsProcess.exe <PID>
 
 ### DllInjectorAsDll
 
-Та же логика инъекции, но упакованная в DLL. Это нужно для того, чтобы запустить инжектор через `Rundll32.exe` — системную утилиту Windows, подписанную Microsoft, — не создавая отдельного исполняемого файла. Наружу торчит одна экспортируемая функция `HelperFunc`, которой Rundll32 передаёт PID жертвы строкой:
+Та же логика инъекции, упакованная в DLL. Запускается через `Rundll32.exe` — системную утилиту Windows — без отдельного исполняемого файла. Экспортирует функцию `HelperFunc`, которой Rundll32 передаёт PID жертвы строкой:
 
 ```
 Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
@@ -89,74 +90,70 @@ Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
 
 ### DLLLoader
 
-Не инжектор. Просто вызывает `LoadLibrary("VirusDLL.dll")` в своём собственном процессе — чтобы убедиться, что DLL правильно собрана и её `DllMain` отрабатывает до того, как мы начнём тащить её в чужой процесс.
+Не инжектор. Вызывает `LoadLibrary("VirusDLL.dll")` в своём процессе — чтобы убедиться, что DLL правильно собрана и её `DllMain` отрабатывает, прежде чем тестировать удалённую инъекцию.
 
 ### Prize.html
 
-Демонстрация того, как инъекцию можно запустить через браузер. Страница с кнопкой, при нажатии на которую JavaScript через `ActiveXObject("WScript.Shell")` вызывает `Rundll32.exe` с нашим инжектором и нужным PID. Работает только в старом **Internet Explorer** — в Chrome, Edge и остальных ActiveX давно заблокирован.
+Фишинговая страница: кнопка → JavaScript через `ActiveXObject("WScript.Shell")` вызывает `Rundll32.exe` с инжектором и нужным PID. Работает только в **Internet Explorer** — в современных браузерах ActiveX заблокирован.
 
 ---
 
 ## 5. Сборка
 
-Нужны: Windows 10/11, Visual Studio Build Tools с компонентом **«Разработка классических приложений на C++»** и CMake 3.10+
+**Требования:** Windows 10/11, [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) с компонентом «Разработка классических приложений на C++», [CMake 3.10+](https://cmake.org/download/).
+
+Открыть **Developer Command Prompt for VS Build Tools** и выполнить из корня проекта:
 
 ```
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-Бинарники появятся в `build/`.
-
-Если Ninja не установлен, можно использовать NMake — он идёт в комплекте с Build Tools:
+Если Ninja не установлен — использовать NMake (идёт в комплекте с Build Tools):
 
 ```
 cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-> Developer Command Prompt важен: он настраивает переменные окружения для `cl.exe`. В обычном `cmd` или PowerShell компилятор не найдётся.
+Бинарники появятся в `build/`.
+
+> Обычный `cmd` или PowerShell не подойдут — только Developer Command Prompt, он настраивает окружение для `cl.exe`.
 
 ---
 
-## 6. Как запустить и проверить
+## 6. Запуск
 
-Повышение прав не нужно — достаточно, что инжектор и жертва запущены от одного пользователя.
+Повышение прав не нужно — достаточно, чтобы инжектор и жертва были запущены от одного пользователя.
 
-**Шаг 1 — убедиться, что VirusDLL работает**
-
-```
-DLLLoader.exe
-```
-
-Должен появиться MessageBox с заголовком `DLLLoader.exe`. Если появился — DLL в порядке, едем дальше.
-
-**Шаг 2 — запустить жертву**
+**1. Проверить, что VirusDLL работает**
 
 ```
-TargetProcess.exe
+build\DLLLoader.exe
 ```
 
-Узнать PID: диспетчер задач или `tasklist | findstr TargetProcess`.
+Появится MessageBox с заголовком `DLLLoader.exe` — DLL в порядке.
 
-**Шаг 3 — инъекция через .exe**
-
-```
-DLLInjectorAsProcess.exe <PID>
-```
-
-В процессе `TargetProcess.exe` выскочит MessageBox с его именем в заголовке. Инъекция сработала.
-
-**Шаг 4 — инъекция через Rundll32**
-
-Скопировать `VirusDLL.dll` и `DllInjectorAsDll.dll` в `C:\Temp\`, затем:
+**2. Запустить жертву**
 
 ```
-Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
+build\TargetProcess.exe
 ```
 
-Результат тот же, но через системную утилиту Windows.
+**3. Инъекция через .exe**
 
-**Шаг 5 — через браузер (только IE)**
+```
+build\DLLInjectorAsProcess.exe <PID>
+```
 
-Открыть `Prize.html` в Internet Explorer, поменять захардкоженный PID в скрипте на актуальный, нажать кнопку.
+В окне `TargetProcess.exe` выскочит MessageBox — инъекция сработала.
+
+**4. Инъекция через Rundll32**
+
+```
+Rundll32.exe  <path>/DllInjectorAsDll.dll HelperFunc <PID>
+```
+
+**5. Через браузер (только IE)**
+
+Открыть `Prize.html` в Internet Explorer, поменять PID в скрипте на актуальный, нажать кнопку.
