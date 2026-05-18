@@ -5,6 +5,6 @@
 int main()
 {
     // You also specify the complete path.
-    LoadLibrary(L"VirusDLL.dll");
+    LoadLibrary("VirusDLL.dll");
     return 0;
 }
