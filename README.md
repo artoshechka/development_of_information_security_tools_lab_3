@@ -11,7 +11,7 @@
 ### Реализовать защиту от инъекции.
 Защита(1 вариант): https://disk.yandex.ru/i/oj5Lm1NgeCDiZQ
 
-Реализованный метод: `UpdateProcThreadAttribute` + `PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON`
+Реализованный метод: `UpdateProcThreadAttribute`
 
 ---
 
@@ -69,11 +69,11 @@
 
 ### VirusDLL
 
-Это то, что мы внедряем. Как только DLL загружается в чужой процесс, срабатывает `DllMain` с событием `DLL_PROCESS_ATTACH`, который вызывает `Attack()`. Та спрашивает у Windows имя текущего процесса через `GetModuleBaseNameA` и показывает `MessageBox` с этим именем в заголовке — наглядное доказательство, что DLL оказалась там, где нужно.
+Внедряемое ПО. Как только DLL загружается в чужой процесс, срабатывает `DllMain` с событием `DLL_PROCESS_ATTACH`, который вызывает `Attack()`. Та спрашивает у Windows имя текущего процесса через `GetModuleBaseNameA` и показывает `MessageBox` с этим именем в заголовке — наглядное доказательство, что DLL оказалась там, где нужно.
 
 ### TargetProcess
 
-Бесконечный цикл, который раз в секунду печатает счётчик. Никакой полезной логики, только что-то живое, в чём можно наблюдать эффект инъекции. Именно его PID передаётся инжектору.
+Бесконечный цикл, который раз в секунду печатает счётчик. Также выводит PID, который будет передаваться инжектору
 
 ### DLLInjectorAsProcess
 
@@ -83,19 +83,19 @@
 DLLInjectorAsProcess.exe <PID>
 ```
 
-`VirusDLL.dll` должна лежать рядом или быть доступна через `PATH`.
+`VirusDLL.dll` должна лежать рядом или быть доступна через переменные среды.
 
 ### DllInjectorAsDll
 
 Та же логика инъекции, упакованная в DLL. Запускается через `Rundll32.exe` — системную утилиту Windows — без отдельного исполняемого файла. Экспортирует функцию `HelperFunc`, которой Rundll32 передаёт PID жертвы строкой:
 
 ```
-Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
+Rundll32.exe <path>/DllInjectorAsDll.dll HelperFunc <PID>
 ```
 
 ### DLLLoader
 
-Не инжектор. Вызывает `LoadLibrary("VirusDLL.dll")` в своём процессе — чтобы убедиться, что DLL правильно собрана и её `DllMain` отрабатывает, прежде чем тестировать удалённую инъекцию.
+Вызывает `LoadLibrary("VirusDLL.dll")` в своём процессе — чтобы убедиться, что DLL правильно собрана и её `DllMain` отрабатывает, прежде чем тестировать удалённую инъекцию.
 
 ### ProtectedProcess
 
@@ -175,25 +175,16 @@ DLL с действительной подписью Microsoft (например
 
 ## 5. Сборка
 
-**Требования:** Windows 10/11, [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) с компонентом «Разработка классических приложений на C++», [CMake 3.10+](https://cmake.org/download/).
-
-Открыть **Developer Command Prompt for VS Build Tools** и выполнить из корня проекта:
+**Требования:** 
+- MSVC
+- CMAKE v.3.10+
 
 ```
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake -B build -G Ninja/"NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-Если Ninja не установлен — использовать NMake (идёт в комплекте с Build Tools):
-
-```
-cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
-```
-
-Бинарники появятся в `build/`.
-
-> Обычный `cmd` или PowerShell не подойдут — только Developer Command Prompt, он настраивает окружение для `cl.exe`.
+Бинарники появятся в `build/**`.
 
 ---
 
@@ -237,8 +228,6 @@ Rundll32.exe  <path>/DllInjectorAsDll.dll HelperFunc <PID>
 
 **6. Демонстрация защиты**
 
-Сначала убедиться, что инъекция в незащищённый процесс работает (шаги 1–3 выше). Это подтверждает, что проблема не в окружении.
-
 Убить все запущенные экземпляры `TargetProcess.exe` — в защищённом сценарии он не нужен, чтобы не перепутать PID.
 
 Убедиться, что `VirusDLL.dll` лежит рядом с `ProtectedProcess.exe` (оба в `build\`) — инжектор ищет её по относительному пути.
@@ -267,16 +256,11 @@ Processing - 1
 ...
 ```
 
-Записать PID `<N>` из этого окна. Попытаться инжектировать в него:
-
+Провести попытка инжектирования
 ```
 build\DLLInjectorAsProcess.exe <N>
 ```
 
-Ожидаемый вывод инжектора:
-
-```
-[!] CreateRemoteThread Failed With Error : 1260
-```
+После должна выскочить ошибка WINDOWS о невозможности применения стороннего .dll
 
 MessageBox не появится — DLL заблокирована на уровне ядра до попадания в адресное пространство.
