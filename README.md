@@ -13,11 +13,7 @@
 
 ---
 
-## 2. Как работает DLL-инъекция
-
-Идея проста: мы не ломаем чужой процесс и не патчим его код. Мы просто просим Windows сделать то, что она умеет делать сама, — загрузить DLL. Только не в наш процесс, а в чужой.
-
-Для этого нужно три вещи: открыть целевой процесс с нужными правами, дотянуться до его памяти и каким-то образом вызвать там `LoadLibraryA`. Именно этим и занимается инжектор, и весь механизм укладывается в четыре шага:
+## 2. Принцип работы
 
 ```
 Инжектор                                 Целевой процесс
@@ -41,7 +37,6 @@
 ## 3. Структура проекта
 
 ```
-DLLInjectionLinkedIn/
 ├── CMakeLists.txt             — сборочный скрипт
 │
 ├── VirusDLL/                  — сама внедряемая DLL
@@ -104,19 +99,14 @@ Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
 
 ## 5. Сборка
 
-Нужны: Windows 10/11, [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) с компонентом **«Разработка классических приложений на C++»** и [CMake 3.20+](https://cmake.org/download/).
-
-Полноценная IDE не нужна — только компилятор и CMake.
-
-Открыть **Developer Command Prompt for VS Build Tools** (ищется в Пуске после установки) и выполнить:
+Нужны: Windows 10/11, Visual Studio Build Tools с компонентом **«Разработка классических приложений на C++»** и CMake 3.10+
 
 ```
-cd DLLInjectionLinkedIn
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-Бинарники появятся в `DLLInjectionLinkedIn/build/`.
+Бинарники появятся в `build/`.
 
 Если Ninja не установлен, можно использовать NMake — он идёт в комплекте с Build Tools:
 
