@@ -11,6 +11,8 @@
 ### Реализовать защиту от инъекции.
 Защита(1 вариант): https://disk.yandex.ru/i/oj5Lm1NgeCDiZQ
 
+Реализованный метод: `UpdateProcThreadAttribute` + `PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON`
+
 ---
 
 ## 2. Принцип работы
@@ -55,6 +57,9 @@
 ├── DLLLoader/                 — простая проверка, что VirusDLL вообще работает
 │   └── Source.cpp
 │
+├── ProtectedProcess/          — процесс-жертва с защитой от загрузки сторонних DLL
+│   └── Source.cpp
+│
 └── Prize.html                 — фишинговая страница для демонстрации через IE
 ```
 
@@ -91,6 +96,31 @@ Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
 ### DLLLoader
 
 Не инжектор. Вызывает `LoadLibrary("VirusDLL.dll")` в своём процессе — чтобы убедиться, что DLL правильно собрана и её `DllMain` отрабатывает, прежде чем тестировать удалённую инъекцию.
+
+### ProtectedProcess
+
+Защищённая версия процесса-жертвы. Использует `UpdateProcThreadAttribute` с политикой `PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON`, которая запрещает загрузку DLL без действительной подписи Microsoft.
+
+Проблема: `UpdateProcThreadAttribute` применяется только к дочернему процессу, запускаемому через `CreateProcess`, — к уже работающему процессу её не применить.
+
+**Решение — самоперезапуск:**
+
+```
+ProtectedProcess.exe          ← запускается без аргументов
+  │  видит: STOP_ARG отсутствует
+  │  читает свой путь через GetModuleFileNameA
+  └─► CreateProcessA("<путь> xakep", ..., атрибуты с митигацией)
+          │
+          └─► ProtectedProcess.exe xakep   ← этот экземпляр уже под защитой
+                видит: argv[1] == "xakep"
+                запускает рабочий цикл
+```
+
+Первый экземпляр после порождения дочернего завершается. Дочерний работает в защищённом виртуальном адресном пространстве — `CreateRemoteThread` + `LoadLibraryA` вернёт ошибку `ERROR_ACCESS_DISABLED_BY_POLICY` (код 1260).
+
+Единственное исключение: DLL, подписанные самой Microsoft, всё равно загружаются беспрепятственно.
+
+---
 
 ### Prize.html
 
@@ -157,3 +187,38 @@ Rundll32.exe  <path>/DllInjectorAsDll.dll HelperFunc <PID>
 **5. Через браузер (только IE)**
 
 Открыть `Prize.html` в Internet Explorer, поменять PID в скрипте на актуальный, нажать кнопку.
+
+---
+
+**6. Демонстрация защиты**
+
+Запустить защищённый процесс:
+
+```
+build\ProtectedProcess.exe
+```
+
+Первый экземпляр выведет:
+
+```
+[!] Local Process Is Not Protected With The Block Dll Policy
+[i] Protected Process Created With PID <N>
+```
+
+и завершится. Второй экземпляр выведет:
+
+```
+[+] Process Is Now Protected With The Block Dll Policy
+PID: <N>
+Processing - 0
+Processing - 1
+...
+```
+
+Попытка инъекции в PID `<N>`:
+
+```
+build\DLLInjectorAsProcess.exe <N>
+```
+
+`CreateRemoteThread` вернёт ошибку 1260 (`ERROR_ACCESS_DISABLED_BY_POLICY`) — DLL не загрузится, MessageBox не появится.
