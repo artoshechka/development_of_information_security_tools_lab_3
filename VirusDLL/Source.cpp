@@ -1,8 +1,13 @@
+/// @file VirusDLL/Source.cpp
+/// @brief Внедряемая DLL. При загрузке в чужой процесс показывает MessageBox
+///        с именем процесса-жертвы в заголовке.
 
 #include <Windows.h>
-#include <winerror.h>
 #include <psapi.h>
+#include <winerror.h>
 
+/// @brief Полезная нагрузка, выполняемая при инъекции.
+///        Получает имя текущего процесса и отображает диалоговое окно.
 void Attack()
 {
     char szProcessName[128];
@@ -10,37 +15,41 @@ void Attack()
     MessageBoxA(NULL, "BOOM!", szProcessName, MB_OK);
 }
 
-BOOL WINAPI DllMain(
-    HINSTANCE hinstDLL,  // handle to DLL module
-    DWORD fdwReason,     // reason for calling function
-    LPVOID lpvReserved)  // reserved
+/// @brief Точка входа DLL.
+/// @param hinstDLL   Дескриптор модуля DLL.
+/// @param fdwReason  Причина вызова (DLL_PROCESS_ATTACH и др.).
+/// @param lpvReserved Зарезервировано системой.
+/// @return TRUE при успехе.
+BOOL WINAPI DllMain(HINSTANCE hinstDLL,  // дескриптор модуля DLL
+                    DWORD fdwReason,     // причина вызова
+                    LPVOID lpvReserved)  // зарезервировано
 {
-    // Perform actions based on the reason for calling.
+    // Выполняем действия в зависимости от причины вызова.
     switch (fdwReason)
     {
-    case DLL_PROCESS_ATTACH:
-        // Initialize once for each new process.
-        Attack();
-        // Return FALSE to fail DLL load.
-        break;
+        case DLL_PROCESS_ATTACH:
+            // Инициализация при первой загрузке DLL в процесс.
+            Attack();
+            // Вернуть FALSE, чтобы отменить загрузку DLL.
+            break;
 
-    case DLL_THREAD_ATTACH:
-        // Do thread-specific initialization.
-        break;
+        case DLL_THREAD_ATTACH:
+            // Инициализация для каждого нового потока.
+            break;
 
-    case DLL_THREAD_DETACH:
-        // Do thread-specific cleanup.
-        break;
+        case DLL_THREAD_DETACH:
+            // Очистка ресурсов потока при его завершении.
+            break;
 
-    case DLL_PROCESS_DETACH:
+        case DLL_PROCESS_DETACH:
 
-        if (lpvReserved != nullptr)
-        {
-            break; // do not do cleanup if process termination scenario
-        }
+            if (lpvReserved != nullptr)
+            {
+                break;  // процесс завершается — очистка не нужна
+            }
 
-        // Perform any necessary cleanup.
-        break;
+            // Очистка ресурсов DLL при выгрузке из процесса.
+            break;
     }
-    return TRUE;  // Successful DLL_PROCESS_ATTACH.
+    return TRUE;  // DLL_PROCESS_ATTACH обработан успешно.
 }
