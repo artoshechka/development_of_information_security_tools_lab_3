@@ -42,7 +42,7 @@
 
 ```
 DLLInjectionLinkedIn/
-├── DLLInjectionLinkedIn.sln   — решение Visual Studio 2019
+├── CMakeLists.txt             — сборочный скрипт
 │
 ├── VirusDLL/                  — сама внедряемая DLL
 │   └── Source.cpp
@@ -104,19 +104,28 @@ Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
 
 ## 5. Сборка
 
-Нужны: Windows 10/11 и Visual Studio 2019+ с компонентом **«Разработка классических приложений на C++»**.
+Нужны: Windows 10/11, [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) с компонентом **«Разработка классических приложений на C++»** и [CMake 3.20+](https://cmake.org/download/).
 
-1. Открыть `DLLInjectionLinkedIn/DLLInjectionLinkedIn.sln`.
-2. Выбрать конфигурацию `Debug | x64`.
-3. `Ctrl+Shift+B` — собрать решение.
+Полноценная IDE не нужна — только компилятор и CMake.
 
-Бинарники появятся в `DLLInjectionLinkedIn/x64/Debug/`.
-
-Или через командную строку (Developer Command Prompt):
+Открыть **Developer Command Prompt for VS Build Tools** (ищется в Пуске после установки) и выполнить:
 
 ```
-msbuild DLLInjectionLinkedIn.sln /p:Configuration=Debug /p:Platform=x64
+cd DLLInjectionLinkedIn
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
 ```
+
+Бинарники появятся в `DLLInjectionLinkedIn/build/`.
+
+Если Ninja не установлен, можно использовать NMake — он идёт в комплекте с Build Tools:
+
+```
+cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+> Developer Command Prompt важен: он настраивает переменные окружения для `cl.exe`. В обычном `cmd` или PowerShell компилятор не найдётся.
 
 ---
 
