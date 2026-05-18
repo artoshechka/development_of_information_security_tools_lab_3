@@ -46,7 +46,7 @@ BOOL CreateProcessWithBlockDllPolicy(IN LPSTR lpProcessPath, OUT DWORD* dwProces
         NULL,
         NULL,
         FALSE,
-        EXTENDED_STARTUPINFO_PRESENT,
+        EXTENDED_STARTUPINFO_PRESENT | CREATE_NEW_CONSOLE,
         NULL,
         NULL,
         &SiEx.StartupInfo,
@@ -75,6 +75,7 @@ int main(int argc, char* argv[])
 
 #ifdef LOCAL_BLOCKDLLPOLICY
     if (argc == 2 && (strcmp(argv[1], STOP_ARG) == 0)) {
+        Sleep(500);
         printf("[+] Process Is Now Protected With The Block Dll Policy\n");
         printf("PID: %lu\n", GetCurrentProcessId());
 
@@ -106,7 +107,11 @@ int main(int argc, char* argv[])
         }
 
         HeapFree(GetProcessHeap(), 0, pcBuffer);
+        CloseHandle(hProcess);
+        CloseHandle(hThread);
         printf("[i] Protected Process Created With PID %d\n", dwProcessId);
+        printf("[i] Press any key to close this window...\n");
+        getchar();
     }
 #endif
 

@@ -24,7 +24,13 @@ int main(int argc, char* argv[])
     LPTHREAD_START_ROUTINE lpLoadLibraryStartAddress = (LPTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandle("Kernel32.dll"), "LoadLibraryA");
 
     // 3.1. Call LoadLibraryin remote process and pass the remote heap memory which contains the dll path to load.
-    CreateRemoteThread(hProcess, NULL, 0, lpLoadLibraryStartAddress, lpHeapBaseAddress1, 0, NULL);
+    HANDLE hRemoteThread = CreateRemoteThread(hProcess, NULL, 0, lpLoadLibraryStartAddress, lpHeapBaseAddress1, 0, NULL);
+    if (!hRemoteThread) {
+        printf("[!] CreateRemoteThread Failed With Error : %d\n", GetLastError());
+    } else {
+        printf("[+] Injection succeeded, remote thread handle: %p\n", hRemoteThread);
+        CloseHandle(hRemoteThread);
+    }
 
     CloseHandle(hProcess);
     return 0;

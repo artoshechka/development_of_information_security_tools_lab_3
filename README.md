@@ -99,26 +99,71 @@ Rundll32.exe C:\Temp\DllInjectorAsDll.dll HelperFunc <PID>
 
 ### ProtectedProcess
 
-Защищённая версия процесса-жертвы. Использует `UpdateProcThreadAttribute` с политикой `PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON`, которая запрещает загрузку DLL без действительной подписи Microsoft.
+Защищённая версия процесса-жертвы. Реализует метод предотвращения загрузки сторонних DLL через атрибуты создания процесса.
 
-Проблема: `UpdateProcThreadAttribute` применяется только к дочернему процессу, запускаемому через `CreateProcess`, — к уже работающему процессу её не применить.
+#### Как работает защита
 
-**Решение — самоперезапуск:**
+Windows позволяет задать политику митигации для дочернего процесса при его создании через `CreateProcessA`. Для этого используется цепочка вызовов:
 
 ```
-ProtectedProcess.exe          ← запускается без аргументов
-  │  видит: STOP_ARG отсутствует
-  │  читает свой путь через GetModuleFileNameA
-  └─► CreateProcessA("<путь> xakep", ..., атрибуты с митигацией)
-          │
-          └─► ProtectedProcess.exe xakep   ← этот экземпляр уже под защитой
-                видит: argv[1] == "xakep"
-                запускает рабочий цикл
+InitializeProcThreadAttributeList   ← выделяем и инициализируем список атрибутов
+        ↓
+UpdateProcThreadAttribute           ← записываем в список политику BLOCK_NON_MICROSOFT_BINARIES
+        ↓
+CreateProcessA(..., EXTENDED_STARTUPINFO_PRESENT, ...)  ← передаём список через STARTUPINFOEXA
 ```
 
-Первый экземпляр после порождения дочернего завершается. Дочерний работает в защищённом виртуальном адресном пространстве — `CreateRemoteThread` + `LoadLibraryA` вернёт ошибку `ERROR_ACCESS_DISABLED_BY_POLICY` (код 1260).
+Политика `PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON` заставляет Windows отклонять любую попытку загрузить DLL, у которой нет действительной подписи Microsoft. Проверка выполняется ядром при каждом вызове `NtMapViewOfSection` — ещё до того, как образ DLL попадёт в адресное пространство процесса. Обойти её из пользовательского режима без модификации ядра невозможно.
 
-Единственное исключение: DLL, подписанные самой Microsoft, всё равно загружаются беспрепятственно.
+#### Ограничение и обход через самоперезапуск
+
+`UpdateProcThreadAttribute` применяется только к **создаваемому** процессу — уже запущенный процесс таким способом защитить нельзя. Чтобы процесс защитил сам себя, используется следующий приём:
+
+```
+ProtectedProcess.exe              ← запуск без аргументов
+  │
+  │  argv[1] != "xakep"
+  │  GetModuleFileNameA → получаем абсолютный путь к себе
+  │  sprintf_s → "<путь>\ProtectedProcess.exe xakep"
+  │
+  └─► CreateProcessA(
+            cmdline = "<путь> xakep",
+            flags   = EXTENDED_STARTUPINFO_PRESENT | CREATE_NEW_CONSOLE,
+            attrs   = { BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON }
+      )
+            │
+            └─► ProtectedProcess.exe xakep    ← новый процесс, уже под защитой
+                  argv[1] == "xakep" → переходит к рабочему циклу
+
+  CloseHandle(hProcess), CloseHandle(hThread)
+  return 0  ← родитель завершается, его консоль закрывается
+```
+
+Аргумент `xakep` выступает маркером: увидев его, процесс понимает, что запущен с нужными атрибутами и может приступать к работе. `CREATE_NEW_CONSOLE` гарантирует, что дочерний процесс откроет собственное окно, а окно родителя закроется сразу после `return 0`.
+
+#### Что происходит при попытке инъекции
+
+```
+DLLInjectorAsProcess.exe <PID защищённого процесса>
+
+  OpenProcess         → успех (права на VM и потоки не ограничены этой политикой)
+  VirtualAllocEx      → успех
+  WriteProcessMemory  → успех
+  CreateRemoteThread(LoadLibraryA, <адрес строки с путём к DLL>)
+        │
+        └─► Windows пытается загрузить DLL в адресное пространство
+              NtMapViewOfSection проверяет подпись образа
+              подпись отсутствует / не Microsoft
+              → STATUS_ACCESS_DISABLED_BY_POLICY
+              → CreateRemoteThread возвращает NULL
+              → GetLastError() == 1260 (ERROR_ACCESS_DISABLED_BY_POLICY)
+```
+
+MessageBox не появляется — DLL так и не попала в адресное пространство жертвы.
+
+#### Исключение
+
+DLL с действительной подписью Microsoft (например, `ntdll.dll`, `kernel32.dll`, системные компоненты) загружаются без ограничений — политика их не затрагивает.
 
 ---
 
@@ -192,20 +237,27 @@ Rundll32.exe  <path>/DllInjectorAsDll.dll HelperFunc <PID>
 
 **6. Демонстрация защиты**
 
+Сначала убедиться, что инъекция в незащищённый процесс работает (шаги 1–3 выше). Это подтверждает, что проблема не в окружении.
+
+Убить все запущенные экземпляры `TargetProcess.exe` — в защищённом сценарии он не нужен, чтобы не перепутать PID.
+
+Убедиться, что `VirusDLL.dll` лежит рядом с `ProtectedProcess.exe` (оба в `build\`) — инжектор ищет её по относительному пути.
+
 Запустить защищённый процесс:
 
 ```
 build\ProtectedProcess.exe
 ```
 
-Первый экземпляр выведет:
+Первое окно сразу закроется, выведя:
 
 ```
 [!] Local Process Is Not Protected With The Block Dll Policy
 [i] Protected Process Created With PID <N>
+[i] Parent exiting — child has its own console window
 ```
 
-и завершится. Второй экземпляр выведет:
+Откроется второе окно — это уже защищённый дочерний процесс:
 
 ```
 [+] Process Is Now Protected With The Block Dll Policy
@@ -215,10 +267,16 @@ Processing - 1
 ...
 ```
 
-Попытка инъекции в PID `<N>`:
+Записать PID `<N>` из этого окна. Попытаться инжектировать в него:
 
 ```
 build\DLLInjectorAsProcess.exe <N>
 ```
 
-`CreateRemoteThread` вернёт ошибку 1260 (`ERROR_ACCESS_DISABLED_BY_POLICY`) — DLL не загрузится, MessageBox не появится.
+Ожидаемый вывод инжектора:
+
+```
+[!] CreateRemoteThread Failed With Error : 1260
+```
+
+MessageBox не появится — DLL заблокирована на уровне ядра до попадания в адресное пространство.
