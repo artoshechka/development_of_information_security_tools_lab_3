@@ -45,23 +45,34 @@ int main(int argc, char* argv[])
     /// Точка входа потока — LoadLibraryA, аргумент — адрес строки из шага 2.
     /// Windows вызовет LoadLibraryA(<путь>), тот загрузит DLL и запустит
     /// DllMain с событием DLL_PROCESS_ATTACH.
-    HANDLE hRemoteThread = CreateRemoteThread(hProcess,
-                                              NULL,  /// атрибуты безопасности потока — по умолчанию
-                                              0,     /// размер стека — по умолчанию
-                                              lpLoadLibraryStartAddress,
-                                              lpHeapBaseAddress1,  /// аргумент для LoadLibraryA — адрес строки с путём
-                                              0,                   /// поток запускается сразу
-                                              NULL);
+    /// Шаг 3б. Создаём поток в адресном пространстве жертвы.
+    HANDLE hRemoteThread =
+        CreateRemoteThread(hProcess, NULL, 0, lpLoadLibraryStartAddress, lpHeapBaseAddress1, 0, NULL);
 
     if (!hRemoteThread)
     {
         printf("[!] CreateRemoteThread Failed With Error : %d\n", GetLastError());
-    } else
-    {
-        printf("[+] Injection succeeded, remote thread handle: %p\n", hRemoteThread);
-        CloseHandle(hRemoteThread);
+        printf("[!] Injection FAILED - could not create remote thread\n");
+
+        // Очистка выделенной памяти
+        VirtualFreeEx(hProcess, lpHeapBaseAddress1, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+        return 1;  // возвращаем код ошибки
     }
 
-    CloseHandle(hProcess);
-    return 0;
+    /// Ждём результат загрузки DLL
+    WaitForSingleObject(hRemoteThread, INFINITE);
+
+    DWORD dwExitCode = 0;
+    GetExitCodeThread(hRemoteThread, &dwExitCode);
+
+    if (dwExitCode == 0)
+    {
+        printf("[!] Injection FAILED - LoadLibraryA returned NULL - DLL failed to load!\n");
+    } else
+    {
+        printf("[+] Injection succeeded, DLL loaded at: %d\n", dwExitCode);
+    }
+
+    CloseHandle(hRemoteThread);
 }
