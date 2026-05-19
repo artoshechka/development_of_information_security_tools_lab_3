@@ -195,7 +195,7 @@ cmake --build build
 **1. Проверить, что VirusDLL работает**
 
 ```
-build\DLLLoader.exe
+<path>/DLLLoader.exe
 ```
 
 Появится MessageBox с заголовком `DLLLoader.exe` — DLL в порядке.
@@ -203,13 +203,13 @@ build\DLLLoader.exe
 **2. Запустить жертву**
 
 ```
-build\TargetProcess.exe
+<path>/TargetProcess.exe
 ```
 
 **3. Инъекция через .exe**
 
 ```
-build\DLLInjectorAsProcess.exe <PID>
+<path>/DLLInjectorAsProcess.exe <PID>
 ```
 
 В окне `TargetProcess.exe` выскочит MessageBox — инъекция сработала.
@@ -230,12 +230,12 @@ Rundll32.exe  <path>/DllInjectorAsDll.dll HelperFunc <PID>
 
 Убить все запущенные экземпляры `TargetProcess.exe` — в защищённом сценарии он не нужен, чтобы не перепутать PID.
 
-Убедиться, что `VirusDLL.dll` лежит рядом с `ProtectedProcess.exe` (оба в `build\`) — инжектор ищет её по относительному пути.
+Убедиться, что `VirusDLL.dll` лежит рядом с `ProtectedProcess.exe` (оба в `<path>/build/**`) — инжектор ищет её по относительному пути.
 
 Запустить защищённый процесс:
 
 ```
-build\ProtectedProcess.exe
+<path>/ProtectedProcess.exe
 ```
 
 Первое окно сразу закроется, выведя:
@@ -258,7 +258,7 @@ Processing - 1
 
 Провести попытка инжектирования
 ```
-build\DLLInjectorAsProcess.exe <N>
+<path>/DLLInjectorAsProcess.exe <N>
 ```
 
 После должна выскочить ошибка WINDOWS о невозможности применения стороннего .dll
